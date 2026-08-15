@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="th">
+   <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1">
+     <title>ระบบเช็คอิน</title>
+     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+     <style>
+       body { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); min-height: 100vh; }
+       .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 0 0 20px 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+       .form-card { background: white; border-radius: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); padding: 2rem; margin: 2rem auto; max-width: 600px; }
+       .input-group-text { background: #e9ecef; border-radius: 10px 0 0 10px; }
+       #videoPreview { border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+       .thumbnail-grid img { border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+       .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 50px; font-weight: bold; }
+     </style>
+   </head>
+  <body>
+    <div class="container py-4">
+      <div class="header py-4 text-center mb-4">
+        <h2 class="mb-0 opacity-75">เช็คอินง่ายๆ ด้วย GPS และกล้อง</h2>
+      </div>
+
+      <div class="form-card">
+        <form onsubmit="submitAbsensi();return false;">
+          <h4 class="mb-4 text-center"><i class="fas fa-user-check me-2 text-primary"></i>แบบฟอร์มเช็คอิน</h4>
+         
+          <div class="mb-3">
+            <label class="form-label"><i class="fas fa-id-card text-primary me-2"></i>เลขประชาชน</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="fas fa-id-badge"></i></span>
+              <input type="text" class="form-control" id="idPegawai" placeholder="เลขประชาชน 13 หลัก" required>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <h5 class="mb-3"><i class="fas fa-camera me-2 text-success"></i>ถ่ายภาพ (ไม่จำกัดจำนวน)</h5>
+            <div class="mb-3">
+              <label class="form-label">เลือกกล้อง:</label>
+              <select class="form-select" id="cameraSelect">
+                <option value="environment">กล้องหลัง</option>
+                <option value="user">กล้องหน้า</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <video id="videoPreview" width="100%" height="auto" autoplay muted playsinline style="display:none;"></video>
+              <canvas id="canvas" style="display:none;"></canvas>
+            </div>
+            <button type="button" class="btn btn-info btn-block mb-3 w-100" id="startCameraBtn"><i class="fas fa-video me-2"></i>เปิดกล้อง</button>
+            <button type="button" class="btn btn-success btn-block mb-3 w-100" id="captureBtn" style="display:none;"><i class="fas fa-camera me-2"></i>ถ่ายภาพ</button>
+            <div id="capturedImages" class="row mb-3 g-2" style="display:none;">
+              <h6 class="col-12"><i class="fas fa-images me-2 text-success"></i>ภาพที่ถ่ายแล้ว:</h6>
+            </div>
+          </div>
+
+          <hr class="my-4">
+
+          <div class="alert alert-success" role="alert" style="display:none"></div>
+          <div class="alert alert-warning" role="alert" style="display:none"></div>
+          <div class="alert alert-danger" role="alert" style="display:none"></div>
+
+          <button class="btn btn-primary btn-lg btn-block w-100" type="submit" id="submitBtn">
+            <i class="fas fa-check me-2"></i>เช็คอินและส่งภาพ
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script>
+      // 🔴🔴 ใส่ WEB APP URL ที่ได้จาก GOOGLE APPS SCRIPT ตรงนี้ 🔴🔴
+      const GAS_WEB_APP_URL = "นำ_WEB_APP_URL_จากข้อ1_มาวางตรงนี้";
+
+      let stream = null;
+      let capturedImages = [];
+      let video = document.getElementById('videoPreview');
+      let canvas = document.getElementById('canvas');
+      let ctx = canvas.getContext('2d');
+
+      document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('startCameraBtn').addEventListener('click', startCamera);
+        document.getElementById('captureBtn').addEventListener('click', capturePhoto);
+        document.getElementById('cameraSelect').addEventListener('change', function() {
+          if (stream) {
+            stopCamera();
+            setTimeout(startCamera, 100);
+          }
+        });
+      });
+
+      function startCamera() {
+        let facingMode = document.getElementById('cameraSelect').value;
+        let constraints = { video: { facingMode: { ideal: facingMode }, width: { ideal: 640 }, height: { ideal: 480 } } };
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          alert('Browser ของคุณไม่รองรับการเข้าถึงกล้อง');
+          return;
+        }
+
+        navigator.mediaDevices.getUserMedia(constraints)
+          .then(function(mediaStream) {
+            stream = mediaStream;
+            video.srcObject = stream;
+            video.style.display = 'block';
+            video.play();
+            document.getElementById('captureBtn').style.display = 'block';
+            document.getElementById('startCameraBtn').style.display = 'none';
+          })
+          .catch(function(err) {
+            alert('ไม่สามารถเปิดกล้องได้: ' + err.message);
+          });
+      }
+
+      function capturePhoto() {
+        if (video.readyState === 4) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          let imageData = canvas.toDataURL('image/jpeg', 0.8);
+          capturedImages.push(imageData);
+
+          let colClass = window.innerWidth < 768 ? 'col-6' : 'col-md-3 col-sm-6';
+          let thumbnail = $('<div class="' + colClass + ' mb-2"><img src="' + imageData + '" class="img-fluid thumbnail-grid w-100"><button type="button" class="btn btn-danger btn-sm mt-1 w-100" onclick="removeImage(' + (capturedImages.length - 1) + ')"><i class="fas fa-trash me-1"></i>ลบ</button></div>');
+          $('#capturedImages').append(thumbnail).show();
+        }
+      }
+
+      function removeImage(index) {
+        capturedImages.splice(index, 1);
+        $('#capturedImages').empty().append('<h6 class="col-12"><i class="fas fa-images me-2 text-success"></i>ภาพที่ถ่ายแล้ว:</h6>');
+        capturedImages.forEach(function(imgData, idx) {
+          let colClass = window.innerWidth < 768 ? 'col-6' : 'col-md-3 col-sm-6';
+          let thumbnail = $('<div class="' + colClass + ' mb-2"><img src="' + imgData + '" class="img-fluid thumbnail-grid w-100"><button type="button" class="btn btn-danger btn-sm mt-1 w-100" onclick="removeImage(' + idx + ')"><i class="fas fa-trash me-1"></i>ลบ</button></div>');
+          $('#capturedImages').append(thumbnail);
+        });
+        if (capturedImages.length === 0) $('#capturedImages').hide();
+      }
+
+      function stopCamera() {
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+          video.srcObject = null;
+          video.style.display = 'none';
+          document.getElementById('captureBtn').style.display = 'none';
+          document.getElementById('startCameraBtn').style.display = 'block';
+          stream = null;
+        }
+      }
+
+      function submitAbsensi(){
+        stopCamera();
+        $('.alert').hide();
+        $('.alert-warning').html('<i class="fas fa-spinner fa-spin me-2"></i>กำลังดึงพิกัด GPS...').show();
+        
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(simpanDataAbsensi, function(err) {
+            $('.alert-warning').hide();
+            alert('กรุณาอนุญาตตำแหน่ง (GPS) เพื่อเช็คอิน');
+          });
+        } else {
+          alert('อุปกรณ์ของคุณไม่รองรับ GPS');
+        }
+      }
+
+      function simpanDataAbsensi(position) {
+        let submitBtn = $('#submitBtn');
+        submitBtn.attr('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>กำลังส่งข้อมูล...');
+        $('.alert-warning').html('<i class="fas fa-spinner fa-spin me-2"></i>กำลังบันทึกข้อมูลและอัปโหลดรูปภาพ...').show();
+
+        let payload = {
+          idPegawai: $('#idPegawai').val(),
+          position: [position.coords.latitude, position.coords.longitude],
+          images: capturedImages
+        };
+
+        // ส่งข้อมูลไปยัง Google Apps Script
+        fetch(GAS_WEB_APP_URL, {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+          $('.alert-warning').hide();
+          if(data.status === 'success' && data.result) {
+            $('.alert-success').html('<i class="fas fa-check-circle me-2"></i>สวัสดีคุณ <strong>' + data.result + '</strong>! เช็คอินเรียบร้อยแล้ว').show();
+            $('#idPegawai').val('');
+            capturedImages = [];
+            $('#capturedImages').hide().empty();
+          } else {
+            $('.alert-danger').html('<i class="fas fa-times-circle me-2"></i>ไม่พบเลขประจำตัว หรือเกิดข้อผิดพลาดในระบบ').show();
+          }
+          submitBtn.removeAttr('disabled').html('<i class="fas fa-check me-2"></i>เช็คอินและส่งภาพ');
+        })
+        .catch(err => {
+          $('.alert-warning').hide();
+          $('.alert-danger').html('<i class="fas fa-times-circle me-2"></i>เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + err.message).show();
+          submitBtn.removeAttr('disabled').html('<i class="fas fa-check me-2"></i>เช็คอินและส่งภาพ');
+        });
+      }
+    </script>
+  </body>
+</html>
